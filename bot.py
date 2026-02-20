@@ -35,9 +35,14 @@ def result_keyboard():
     ])
 
 
+async def send_and_store(update, context, text, reply_markup=None):
+    msg = await update.effective_chat.send_message(text, reply_markup=reply_markup)
+    context.user_data.setdefault("bot_messages", []).append(msg.message_id)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("Стартовый стек?")
+    await send_and_store(update, context, "Стартовый стек?")
     return STACK
 
 
@@ -45,7 +50,7 @@ async def restart_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data.clear()
-    await query.edit_message_text("Стартовый стек?")
+    await send_and_store(update, context, "Стартовый стек?")
     return STACK
 
 
@@ -53,37 +58,43 @@ async def clear_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Удаляем последнее сообщение бота
-    try:
-        await query.message.delete()
-    except:
-        pass
+    # удаляем все сообщения бота
+    for msg_id in context.user_data.get("bot_messages", []):
+        try:
+            await context.bot.delete_message(chat_id=query.message.chat.id, message_id=msg_id)
+        except:
+            pass
 
-    # Отправляем только кнопку "Новый расчёт"
-    await query.message.chat.send_message(
-        "Чат очищен",
+    context.user_data.clear()
+
+    # отправляем только кнопку нового расчёта
+    msg = await context.bot.send_message(
+        chat_id=query.message.chat.id,
+        text="",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")]
         ])
     )
+    context.user_data["bot_messages"] = [msg.message_id]
+
     return ConversationHandler.END
 
 
 async def get_stack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["stack"] = float(update.message.text.replace(",", "."))
-    await update.message.reply_text("Количество стартовых ноков?")
+    await send_and_store(update, context, "Количество стартовых ноков?")
     return BOUNTIES
 
 
 async def get_bounties(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["bounties"] = float(update.message.text.replace(",", "."))
-    await update.message.reply_text("Текущий большой блайнд?")
+    await send_and_store(update, context, "Текущий большой блайнд?")
     return BB
 
 
 async def get_bb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["bb"] = float(update.message.text.replace(",", "."))
-    await update.message.reply_text("Выбери стадию турнира:", reply_markup=stage_keyboard())
+    await send_and_store(update, context, "Выбери стадию турнира:", reply_markup=stage_keyboard())
     return STAGE
 
 
@@ -99,7 +110,9 @@ async def stage_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result_bb = (stack * (stage_percent / 100) * bounties) / bb
     text = f"{round(result_bb, 2)} BB"
 
-    await query.edit_message_text(text, reply_markup=result_keyboard())
+    msg = await query.edit_message_text(text, reply_markup=result_keyboard())
+    context.user_data.setdefault("bot_messages", []).append(msg.message_id)
+
     return ConversationHandler.END
 
 
