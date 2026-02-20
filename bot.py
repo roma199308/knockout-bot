@@ -24,12 +24,15 @@ STAGES = [
 ]
 
 
-def stage_keyboard() -> InlineKeyboardMarkup:
+def stage_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton(text, callback_data=value)] for text, value in STAGES])
 
 
-def restart_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")]])
+def result_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")],
+        [InlineKeyboardButton("🗑 Сбросить всё", callback_data="clear")]
+    ])
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -39,8 +42,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def restart_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ВАЖНО: это entry-point для ConversationHandler, поэтому после нажатия
-    # бот снова корректно принимает следующие сообщения.
     query = update.callback_query
     await query.answer()
     context.user_data.clear()
@@ -48,34 +49,42 @@ async def restart_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STACK
 
 
-async def get_stack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def clear_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # Удаляем последнее сообщение бота
     try:
-        context.user_data["stack"] = float(update.message.text.replace(",", "."))
-        await update.message.reply_text("Количество стартовых ноков?")
-        return BOUNTIES
+        await query.message.delete()
     except:
-        await update.message.reply_text("Введи число. Стартовый стек?")
-        return STACK
+        pass
+
+    # Отправляем только кнопку "Новый расчёт"
+    await query.message.chat.send_message(
+        "Чат очищен",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")]
+        ])
+    )
+    return ConversationHandler.END
+
+
+async def get_stack(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["stack"] = float(update.message.text.replace(",", "."))
+    await update.message.reply_text("Количество стартовых ноков?")
+    return BOUNTIES
 
 
 async def get_bounties(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        context.user_data["bounties"] = float(update.message.text.replace(",", "."))
-        await update.message.reply_text("Текущий большой блайнд?")
-        return BB
-    except:
-        await update.message.reply_text("Введи число. Количество ноков?")
-        return BOUNTIES
+    context.user_data["bounties"] = float(update.message.text.replace(",", "."))
+    await update.message.reply_text("Текущий большой блайнд?")
+    return BB
 
 
 async def get_bb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        context.user_data["bb"] = float(update.message.text.replace(",", "."))
-        await update.message.reply_text("Выбери стадию турнира:", reply_markup=stage_keyboard())
-        return STAGE
-    except:
-        await update.message.reply_text("Введи число. Большой блайнд?")
-        return BB
+    context.user_data["bb"] = float(update.message.text.replace(",", "."))
+    await update.message.reply_text("Выбери стадию турнира:", reply_markup=stage_keyboard())
+    return STAGE
 
 
 async def stage_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -88,17 +97,9 @@ async def stage_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bb = context.user_data["bb"]
 
     result_bb = (stack * (stage_percent / 100) * bounties) / bb
-
-    # Результат с текстом "BB" после цифр
     text = f"{round(result_bb, 2)} BB"
-    await query.edit_message_text(text, reply_markup=restart_keyboard())
 
-    return ConversationHandler.END
-
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    await update.message.reply_text("Отменено. Напиши /start чтобы начать заново.")
+    await query.edit_message_text(text, reply_markup=result_keyboard())
     return ConversationHandler.END
 
 
@@ -109,6 +110,7 @@ def main():
         entry_points=[
             CommandHandler("start", start),
             CallbackQueryHandler(restart_entry, pattern="^restart$"),
+            CallbackQueryHandler(clear_chat, pattern="^clear$"),
         ],
         states={
             STACK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_stack)],
@@ -116,7 +118,7 @@ def main():
             BB: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_bb)],
             STAGE: [CallbackQueryHandler(stage_selected)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[],
         allow_reentry=True,
     )
 
