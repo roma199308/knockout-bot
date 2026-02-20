@@ -35,9 +35,10 @@ def result_keyboard():
     ])
 
 
-async def send_and_store(update, context, text, reply_markup=None):
+async def send_and_store(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None):
     msg = await update.effective_chat.send_message(text, reply_markup=reply_markup)
     context.user_data.setdefault("bot_messages", []).append(msg.message_id)
+    return msg
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,7 +68,6 @@ async def clear_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data.clear()
 
-    # отправляем только кнопку нового расчёта
     msg = await context.bot.send_message(
         chat_id=query.message.chat.id,
         text="",
@@ -102,13 +102,21 @@ async def stage_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    stage_percent = float(query.data)
+    stage_percent = query.data
+
+    # ищем текст стадии
+    stage_text = next(text for text, value in STAGES if value == stage_percent)
+
     stack = context.user_data["stack"]
     bounties = context.user_data["bounties"]
     bb = context.user_data["bb"]
 
-    result_bb = (stack * (stage_percent / 100) * bounties) / bb
-    text = f"{round(result_bb, 2)} BB"
+    result_bb = (stack * (float(stage_percent) / 100) * bounties) / bb
+
+    text = (
+        f"Стоимость нока: {round(result_bb, 2)} BB\n"
+        f"Стадия: {stage_text}"
+    )
 
     msg = await query.edit_message_text(text, reply_markup=result_keyboard())
     context.user_data.setdefault("bot_messages", []).append(msg.message_id)
