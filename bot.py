@@ -30,8 +30,7 @@ def stage_keyboard():
 
 def result_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")],
-        [InlineKeyboardButton("🗑 Сбросить всё", callback_data="clear")]
+        [InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")]
     ])
 
 
@@ -53,31 +52,6 @@ async def restart_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await send_and_store(update, context, "Стартовый стек?")
     return STACK
-
-
-async def clear_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    # удаляем все сообщения бота
-    for msg_id in context.user_data.get("bot_messages", []):
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat.id, message_id=msg_id)
-        except:
-            pass
-
-    context.user_data.clear()
-
-    msg = await context.bot.send_message(
-        chat_id=query.message.chat.id,
-        text="",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")]
-        ])
-    )
-    context.user_data["bot_messages"] = [msg.message_id]
-
-    return ConversationHandler.END
 
 
 async def get_stack(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,8 +77,6 @@ async def stage_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     stage_percent = query.data
-
-    # ищем текст стадии
     stage_text = next(text for text, value in STAGES if value == stage_percent)
 
     stack = context.user_data["stack"]
@@ -131,7 +103,6 @@ def main():
         entry_points=[
             CommandHandler("start", start),
             CallbackQueryHandler(restart_entry, pattern="^restart$"),
-            CallbackQueryHandler(clear_chat, pattern="^clear$"),
         ],
         states={
             STACK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_stack)],
