@@ -29,20 +29,12 @@ def stage_keyboard():
 
 
 def result_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")]
-    ])
-
-
-async def send_and_store(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None):
-    msg = await update.effective_chat.send_message(text, reply_markup=reply_markup)
-    context.user_data.setdefault("bot_messages", []).append(msg.message_id)
-    return msg
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Новый расчёт", callback_data="restart")]])
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await send_and_store(update, context, "Стартовый стек?")
+    await update.effective_chat.send_message("Стартовый стек?")
     return STACK
 
 
@@ -50,25 +42,25 @@ async def restart_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data.clear()
-    await send_and_store(update, context, "Стартовый стек?")
+    await query.message.edit_text("Стартовый стек?")
     return STACK
 
 
 async def get_stack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["stack"] = float(update.message.text.replace(",", "."))
-    await send_and_store(update, context, "Количество стартовых ноков?")
+    await update.effective_chat.send_message("Количество стартовых ноков?")
     return BOUNTIES
 
 
 async def get_bounties(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["bounties"] = float(update.message.text.replace(",", "."))
-    await send_and_store(update, context, "Текущий большой блайнд?")
+    await update.effective_chat.send_message("Текущий большой блайнд?")
     return BB
 
 
 async def get_bb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["bb"] = float(update.message.text.replace(",", "."))
-    await send_and_store(update, context, "Выбери стадию турнира:", reply_markup=stage_keyboard())
+    await update.effective_chat.send_message("Выбери стадию турнира:", reply_markup=stage_keyboard())
     return STAGE
 
 
@@ -79,19 +71,19 @@ async def stage_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stage_percent = query.data
     stage_text = next(text for text, value in STAGES if value == stage_percent)
 
+    # 1) СРАЗУ после клика — отдельное сообщение со стадией
+    await query.message.chat.send_message(f"Стадия: {stage_text}")
+
+    # 2) Финальный результат — ТОЛЬКО стоимость нока
     stack = context.user_data["stack"]
     bounties = context.user_data["bounties"]
     bb = context.user_data["bb"]
 
     result_bb = (stack * (float(stage_percent) / 100) * bounties) / bb
+    result_text = f"Стоимость нока: {round(result_bb, 2)} BB"
 
-    text = (
-        f"Стоимость нока: {round(result_bb, 2)} BB\n"
-        f"Стадия: {stage_text}"
-    )
-
-    msg = await query.edit_message_text(text, reply_markup=result_keyboard())
-    context.user_data.setdefault("bot_messages", []).append(msg.message_id)
+    # Редактируем сообщение с кнопками стадии в финальный результат
+    await query.edit_message_text(result_text, reply_markup=result_keyboard())
 
     return ConversationHandler.END
 
